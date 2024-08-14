@@ -9,13 +9,20 @@ const path = require("path");
 const app = express();
 
 // Middleware
-app.use(
-  cors({
-    origin: ("http://localhost:5173")||process.env.SITE_URL, // Allow only this origin
-    methods: "GET,POST,PUT,DELETE", // Allow these methods
-    allowedHeaders: "Content-Type,Authorization", // Allow these headers
-  })
-);
+const allowedOrigins = ["http://localhost:5173", process.env.SITE_URL];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  optionsSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
 app.use(bodyParser.json({ limit: "100mb" }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -225,12 +232,10 @@ app.post("/api/authenticate", async (req, res) => {
       .get();
 
     if (snapshot.empty) {
-      return res
-        .status(401)
-        .json({
-          authenticated: false,
-          message: "Invalid username or password",
-        });
+      return res.status(401).json({
+        authenticated: false,
+        message: "Invalid username or password",
+      });
     }
 
     const user = snapshot.docs[0].data();
@@ -239,12 +244,10 @@ app.post("/api/authenticate", async (req, res) => {
     if (user.password === password) {
       return res.status(200).json({ authenticated: true });
     } else {
-      return res
-        .status(401)
-        .json({
-          authenticated: false,
-          message: "Invalid username or password",
-        });
+      return res.status(401).json({
+        authenticated: false,
+        message: "Invalid username or password",
+      });
     }
   } catch (error) {
     console.error("Error authenticating user:", error);
