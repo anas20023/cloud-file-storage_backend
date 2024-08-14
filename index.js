@@ -10,7 +10,6 @@ const app = express();
 
 // Middleware
 const allowedOrigins = ["http://localhost:5173", process.env.SITE_URL];
-
 const corsOptions = {
   origin: function (origin, callback) {
     if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
