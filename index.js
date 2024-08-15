@@ -5,28 +5,23 @@ const cors = require("cors");
 const bodyParser = require("body-parser");
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
-const path = require("path");
 const app = express();
 
-
-const allowedOrigins = ['http://localhost:5173', 'https://filepanel.vercel.app'];
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://filepanel.vercel.app",
+];
 
 const corsOptions = {
-    origin: function (origin, callback) {
-        if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
-    optionsSuccessStatus: 200
+  origin: allowedOrigins,
+  optionsSuccessStatus: 200, // For legacy browser support
 };
 
 app.use(cors(corsOptions));
 
 app.use(bodyParser.json({ limit: "100mb" }));
 app.use(bodyParser.urlencoded({ extended: true }));
- 
+
 // Initialize Firebase Admin SDK
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
