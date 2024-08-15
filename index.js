@@ -8,20 +8,22 @@ const upload = multer({ storage: multer.memoryStorage() });
 const path = require("path");
 const app = express();
 
-// Middleware
-const allowedOrigins = ["http://localhost:5173", process.env.SITE_URL];
+
+const allowedOrigins = ['http://localhost:5173', 'https://filepanel.vercel.app'];
+
 const corsOptions = {
-  origin: function (origin, callback) {
-    if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  optionsSuccessStatus: 200,
+    origin: function (origin, callback) {
+        if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
+
 app.use(bodyParser.json({ limit: "100mb" }));
 app.use(bodyParser.urlencoded({ extended: true }));
  
