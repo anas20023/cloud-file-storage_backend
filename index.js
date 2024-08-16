@@ -9,7 +9,10 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:5173",
   "https://filepanel.vercel.app",
+  "https://server.anasib.tech",
+  "https://www.anasib.tech",
   "https://anasib.tech",
+  "https://www.server.anasib.tech",
 ];
 
 const corsOptions = {
@@ -32,7 +35,7 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
 app.use(bodyParser.json({ limit: "100mb" }));
-app.use(bodyParser.urlencoded({ extended: true}));
+app.use(bodyParser.urlencoded({ extended: true }));
 
 // Initialize Firebase Admin SDK
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
