@@ -6,7 +6,6 @@ const bodyParser = require("body-parser");
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
 const app = express();
-const url = process.env.URL;
 const allowedOrigins = [
   "http://localhost:5173",
   "https://filepanel.vercel.app",
