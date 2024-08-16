@@ -229,6 +229,7 @@ app.get("/api/file-formats", async (req, res) => {
 
 // Get Users
 app.post("/api/authenticate", async (req, res) => {
+  console.log("Working");
   const { username, password } = req.body;
 
   try {
