@@ -1,12 +1,18 @@
-require("dotenv").config(); // Load environment variables
-const express = require("express");
-const admin = require("firebase-admin");
-const cors = require("cors");
-const bodyParser = require("body-parser");
-const multer = require("multer");
+import express from "express";
+import admin from "firebase-admin";
+import cors from "cors";
+import bodyParser from "body-parser";
+import multer from "multer";
+import dotenv from "dotenv";
+import fetch from "node-fetch"; // Import node-fetch if using it
+import { mimeTypeMapping } from "./mimeTypes.js"; // Adjust path as needed
+import EventEmitter from "events";
+const myEmitter = new EventEmitter();
+myEmitter.setMaxListeners(20); // Set the max listeners to 20
+
 const upload = multer({ storage: multer.memoryStorage() });
 const app = express();
-import { mimeTypeMapping } from "./mimeTypes.js";
+dotenv.config(); // Load environment variables
 const allowedOrigins = [
   "http://localhost:5173",
   "https://filepanel.vercel.app",
