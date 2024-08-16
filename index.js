@@ -24,9 +24,11 @@ const corsOptions = {
     return callback(null, true);
   },
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+  allowedHeaders: "Content-Type, Authorization", // Add this if you're using Authorization headers
   preflightContinue: false,
   optionsSuccessStatus: 204,
 };
+
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
