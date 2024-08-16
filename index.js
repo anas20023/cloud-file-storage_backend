@@ -9,8 +9,7 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:5173",
   "https://filepanel.vercel.app",
-  "https://server.anasib.tech",
-  "https://www.server.anasib.tech",
+  "https://anasib.tech",
 ];
 
 const corsOptions = {
