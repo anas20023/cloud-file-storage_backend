@@ -230,6 +230,7 @@ app.get("/api/statistics", async (req, res) => {
 });
 
 app.get("/api/file-formats", async (req, res) => {
+  console.log(mimeTypeMapping);
   try {
     const [files] = await bucket.getFiles();
     const formats = new Map();
@@ -237,18 +238,14 @@ app.get("/api/file-formats", async (req, res) => {
     for (const file of files) {
       const [metadata] = await file.getMetadata();
       const contentType = metadata.contentType;
-
       if (contentType) {
         // Use the mimeTypeMapping to get the simplified format
         const format =
           mimeTypeMapping[contentType] || contentType.split("/")[1];
-        
-        // Count occurrences of each format
-        formats.set(format, (formats.get(format) || 0) + 1);
+        formats.set(format, (formats.get(format) || 0) + 1); // Count occurrences of each format
       }
     }
 
-    // Convert Map to Array for JSON response
     res.json({ formats: Array.from(formats.entries()) });
   } catch (error) {
     console.error("Error fetching file formats:", error);
