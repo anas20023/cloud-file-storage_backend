@@ -6,10 +6,6 @@ import multer from "multer";
 import dotenv from "dotenv";
 import fetch from "node-fetch"; // Import node-fetch if using it
 import { mimeTypeMapping } from "./mimeTypes.js"; // Adjust path as needed
-import EventEmitter from "events";
-const myEmitter = new EventEmitter();
-myEmitter.setMaxListeners(20); // Set the max listeners to 20
-
 const upload = multer({ storage: multer.memoryStorage() });
 const app = express();
 dotenv.config(); // Load environment variables
