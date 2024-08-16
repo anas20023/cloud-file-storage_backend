@@ -126,13 +126,25 @@ app.get("/api/download/:fileName", async (req, res) => {
     }
 
     const [fileURL] = await fileRef.getSignedUrl({
-      action: "read",
-      expires: "03-09-2491", // Long expiration date
+      action: 'read',
+      expires: '03-09-2491', // Long expiration date
     });
 
-    res.redirect(fileURL);
+    // Fetch the file from the signed URL
+    const response = await fetch(fileURL);
+
+    if (!response.ok) {
+      throw new Error('Network response was not ok.');
+    }
+
+    // Set the appropriate headers
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Type', response.headers.get('Content-Type'));
+
+    // Pipe the file to the response
+    response.body.pipe(res);
   } catch (error) {
-    console.error("Error downloading file:", error);
+    console.error('Error downloading file:', error);
     res.status(500).send({ message: "Failed to download file" });
   }
 });
