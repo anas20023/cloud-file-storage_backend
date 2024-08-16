@@ -230,7 +230,6 @@ app.get("/api/statistics", async (req, res) => {
 });
 
 app.get("/api/file-formats", async (req, res) => {
-  console.log(mimeTypeMapping);
   try {
     const [files] = await bucket.getFiles();
     const formats = new Map();
