@@ -6,6 +6,7 @@ const bodyParser = require("body-parser");
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
 const app = express();
+import { mimeTypeMapping } from './mimeTypes.js';
 const allowedOrigins = [
   "http://localhost:5173",
   "https://filepanel.vercel.app",
@@ -231,7 +232,8 @@ app.get("/api/file-formats", async (req, res) => {
       const [metadata] = await file.getMetadata();
       const contentType = metadata.contentType;
       if (contentType) {
-        const format = contentType.split("/")[1]; // Extract the format from MIME type
+        // Use the mimeTypeMapping to get the simplified format
+        const format = mimeTypeMapping[contentType] || contentType.split("/")[1];
         formats.set(format, (formats.get(format) || 0) + 1); // Count occurrences of each format
       }
     }
