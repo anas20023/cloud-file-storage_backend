@@ -6,7 +6,7 @@ const bodyParser = require("body-parser");
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
 const app = express();
-import { mimeTypeMapping } from './mimeTypes.js';
+import { mimeTypeMapping } from "./mimeTypes.js";
 const allowedOrigins = [
   "http://localhost:5173",
   "https://filepanel.vercel.app",
@@ -127,25 +127,25 @@ app.get("/api/download/:fileName", async (req, res) => {
     }
 
     const [fileURL] = await fileRef.getSignedUrl({
-      action: 'read',
-      expires: '03-09-2491', // Long expiration date
+      action: "read",
+      expires: "03-09-2491", // Long expiration date
     });
 
     // Fetch the file from the signed URL
     const response = await fetch(fileURL);
 
     if (!response.ok) {
-      throw new Error('Network response was not ok.');
+      throw new Error("Network response was not ok.");
     }
 
     // Set the appropriate headers
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-    res.setHeader('Content-Type', response.headers.get('Content-Type'));
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.setHeader("Content-Type", response.headers.get("Content-Type"));
 
     // Pipe the file to the response
     response.body.pipe(res);
   } catch (error) {
-    console.error('Error downloading file:', error);
+    console.error("Error downloading file:", error);
     res.status(500).send({ message: "Failed to download file" });
   }
 });
@@ -224,6 +224,7 @@ app.get("/api/statistics", async (req, res) => {
 });
 
 app.get("/api/file-formats", async (req, res) => {
+  console.log(mimeTypeMapping);
   try {
     const [files] = await bucket.getFiles();
     const formats = new Map();
@@ -233,7 +234,8 @@ app.get("/api/file-formats", async (req, res) => {
       const contentType = metadata.contentType;
       if (contentType) {
         // Use the mimeTypeMapping to get the simplified format
-        const format = mimeTypeMapping[contentType] || contentType.split("/")[1];
+        const format =
+          mimeTypeMapping[contentType] || contentType.split("/")[1];
         formats.set(format, (formats.get(format) || 0) + 1); // Count occurrences of each format
       }
     }
