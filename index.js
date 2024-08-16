@@ -9,8 +9,9 @@ const app = express();
 const url = process.env.URL;
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://server.anasib.tech",
+  "https://anasib.tech",
   "https://filepanel.vercel.app",
+  url,
 ];
 
 const corsOptions = {
@@ -28,7 +29,6 @@ const corsOptions = {
   preflightContinue: false,
   optionsSuccessStatus: 204,
 };
-
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
