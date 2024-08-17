@@ -67,29 +67,32 @@ app.post("/api/upload", upload.array("files"), async (req, res) => {
   }
 
   try {
-    const fileURLs = [];
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const fileName = fileNames[i];
+    const fileUploadPromises = files.map(async (file, index) => {
+      const fileName = fileNames[index];
       const contentType = file.mimetype;
 
       const fileRef = bucket.file(`files/${fileName}`);
+
+      // Save the file to Firebase Storage
       await fileRef.save(file.buffer, { contentType });
 
+      // Generate a signed URL
       const [fileURL] = await fileRef.getSignedUrl({
         action: "read",
-        expires: "03-09-2491", // Long expiration date
+        expires: "03-09-2491", // Consider a shorter expiration date
       });
 
-      fileURLs.push(fileURL);
-
+      // Store file metadata in Firestore
       await db.collection("files").add({
         fileName,
         uploadDate: new Date(),
         fileURL,
       });
-    }
+
+      return fileURL;
+    });
+
+    const fileURLs = await Promise.all(fileUploadPromises);
 
     res.status(200).send({ message: "Files uploaded successfully", fileURLs });
   } catch (error) {
@@ -97,6 +100,7 @@ app.post("/api/upload", upload.array("files"), async (req, res) => {
     res.status(500).send({ message: "Failed to upload files" });
   }
 });
+
 
 // Get Files
 app.get("/api/files", async (req, res) => {
