@@ -248,7 +248,7 @@ app.get("/api/file-formats", async (req, res) => {
 app.get("/api/weather", async (req, res) => {
   const { latitude, longitude } = req.query;
   console.log(latitude, longitude);
-  const API_KEY = process.env.REACT_APP_WEATHER_API_KEY;
+  const API_KEY = process.env.WEATHER_API_KEY;
   try {
     const response = await fetch(
       `https://api.weatherapi.com/v1/current.json?key=${API_KEY}&q=${latitude},${longitude}`
