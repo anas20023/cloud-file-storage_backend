@@ -309,69 +309,70 @@ app.get("/", async (req, res) => {
   res.send("Hello World");
 });
 
-// Updated Note Schema with 'title'
+// Note Schema
 const noteSchema = new mongoose.Schema({
-  title: { type: String, required: true }, // New field for the note title
-  text: { type: String, required: true }, // Existing field for the note text
+  title: { type: String, required: true },
+  text: { type: String, required: true }
 });
 
-const Note = mongoose.model("Note", noteSchema);
+const Note = mongoose.model('Note', noteSchema);
 
 // API Endpoints
-
-// Get all notes
-app.get("/api/notes", async (req, res) => {
+app.get('/api/notes', async (req, res) => {
   try {
     const notes = await Note.find();
     res.json(notes);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
-// Create a new note
-app.post("/api/notes", async (req, res) => {
+app.post('/api/notes', async (req, res) => {
   try {
+    const { title, text } = req.body;
+    if (!title || !text) {
+      return res.status(400).json({ message: 'Title and text are required' });
+    }
     const newNote = new Note({
-      title: req.body.title, // Handling the title in the request body
-      text: req.body.text,
+      title,
+      text
     });
     await newNote.save();
-    res.status(201).json(newNote);
-  } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.json(newNote);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
-// Update an existing note
-app.put("/api/notes/:id", async (req, res) => {
+app.put('/api/notes/:id', async (req, res) => {
   try {
+    const { title, text } = req.body;
     const updatedNote = await Note.findByIdAndUpdate(
       req.params.id,
-      { title: req.body.title, text: req.body.text }, // Updating title and text
-      { new: true } // Return the updated note
+      { title, text },
+      { new: true }
     );
     if (!updatedNote) {
-      return res.status(404).json({ message: "Note not found" });
+      return res.status(404).json({ message: 'Note not found' });
     }
     res.json(updatedNote);
-  } catch (err) {
-    res.status(400).json({ message: err.message });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
-// Delete a note
-app.delete("/api/notes/:id", async (req, res) => {
+app.delete('/api/notes/:id', async (req, res) => {
   try {
     const deletedNote = await Note.findByIdAndDelete(req.params.id);
     if (!deletedNote) {
-      return res.status(404).json({ message: "Note not found" });
+      return res.status(404).json({ message: 'Note not found' });
     }
     res.json(deletedNote);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
+
 // Start Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
