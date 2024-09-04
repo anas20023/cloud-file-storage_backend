@@ -14,7 +14,7 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
 });
-console.log(dburl);
+//console.log(dburl);
 mongoose.connect(dburl, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -309,39 +309,68 @@ app.get("/", async (req, res) => {
   res.send("Hello World");
 });
 
-// Note Schema
+// Updated Note Schema with 'title'
 const noteSchema = new mongoose.Schema({
-  text: String,
+  title: { type: String, required: true }, // New field for the note title
+  text: { type: String, required: true }, // Existing field for the note text
 });
 
-const Note = mongoose.model('Note', noteSchema);
+const Note = mongoose.model("Note", noteSchema);
 
 // API Endpoints
-app.get('/api/notes', async (req, res) => {
-  const notes = await Note.find();
-  res.json(notes);
+
+// Get all notes
+app.get("/api/notes", async (req, res) => {
+  try {
+    const notes = await Note.find();
+    res.json(notes);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
-app.post('/api/notes', async (req, res) => {
-  const newNote = new Note({
-    text: req.body.text,
-  });
-  await newNote.save();
-  res.json(newNote);
+// Create a new note
+app.post("/api/notes", async (req, res) => {
+  try {
+    const newNote = new Note({
+      title: req.body.title, // Handling the title in the request body
+      text: req.body.text,
+    });
+    await newNote.save();
+    res.status(201).json(newNote);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
 });
 
-app.put('/api/notes/:id', async (req, res) => {
-  const updatedNote = await Note.findByIdAndUpdate(
-    req.params.id,
-    { text: req.body.text },
-    { new: true }
-  );
-  res.json(updatedNote);
+// Update an existing note
+app.put("/api/notes/:id", async (req, res) => {
+  try {
+    const updatedNote = await Note.findByIdAndUpdate(
+      req.params.id,
+      { title: req.body.title, text: req.body.text }, // Updating title and text
+      { new: true } // Return the updated note
+    );
+    if (!updatedNote) {
+      return res.status(404).json({ message: "Note not found" });
+    }
+    res.json(updatedNote);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
 });
 
-app.delete('/api/notes/:id', async (req, res) => {
-  const deletedNote = await Note.findByIdAndDelete(req.params.id);
-  res.json(deletedNote);
+// Delete a note
+app.delete("/api/notes/:id", async (req, res) => {
+  try {
+    const deletedNote = await Note.findByIdAndDelete(req.params.id);
+    if (!deletedNote) {
+      return res.status(404).json({ message: "Note not found" });
+    }
+    res.json(deletedNote);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 // Start Server
 const PORT = process.env.PORT || 3000;
