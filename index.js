@@ -3,16 +3,27 @@ import admin from "firebase-admin";
 import cors from "cors";
 import bodyParser from "body-parser";
 import multer from "multer";
+import mongoose from "mongoose";
 import dotenv from "dotenv";
 import fetch from "node-fetch"; // Import node-fetch if using it
 import { mimeTypeMapping } from "./mimeTypes.js"; // Adjust path as needed
+const app = express();
+dotenv.config(); // Load environment variables
+const dburl = process.env.MONGO_URI;
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
 });
+console.log(dburl);
+mongoose.connect(dburl, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
 
-const app = express();
-dotenv.config(); // Load environment variables
+mongoose.connection.on("connected", () => {
+  console.log("Connected to MongoDB");
+});
+
 const allowedOrigins = [
   "http://localhost:5173",
   "https://filepanel.vercel.app",
@@ -296,6 +307,41 @@ app.post("/api/authenticate", async (req, res) => {
 });
 app.get("/", async (req, res) => {
   res.send("Hello World");
+});
+
+// Note Schema
+const noteSchema = new mongoose.Schema({
+  text: String,
+});
+
+const Note = mongoose.model('Note', noteSchema);
+
+// API Endpoints
+app.get('/api/notes', async (req, res) => {
+  const notes = await Note.find();
+  res.json(notes);
+});
+
+app.post('/api/notes', async (req, res) => {
+  const newNote = new Note({
+    text: req.body.text,
+  });
+  await newNote.save();
+  res.json(newNote);
+});
+
+app.put('/api/notes/:id', async (req, res) => {
+  const updatedNote = await Note.findByIdAndUpdate(
+    req.params.id,
+    { text: req.body.text },
+    { new: true }
+  );
+  res.json(updatedNote);
+});
+
+app.delete('/api/notes/:id', async (req, res) => {
+  const deletedNote = await Note.findByIdAndDelete(req.params.id);
+  res.json(deletedNote);
 });
 // Start Server
 const PORT = process.env.PORT || 3000;
