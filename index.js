@@ -7,6 +7,7 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import fetch from "node-fetch"; // Import node-fetch if using it
 import { mimeTypeMapping } from "./mimeTypes.js"; // Adjust path as needed
+import NodeCache from "node-cache";
 const app = express();
 dotenv.config(); // Load environment variables
 const dburl = process.env.MONGO_URI;
@@ -45,9 +46,10 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
+app.use(express.json());
 app.use(bodyParser.json({ limit: "200mb" }));
 app.use(bodyParser.urlencoded({ limit: "200mb", extended: true }));
+const cache = new NodeCache();
 
 // Initialize Firebase Admin SDK
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -64,8 +66,8 @@ const bucket = admin.storage().bucket();
 
 // Upload File
 app.post("/api/upload", upload.array("files"), async (req, res) => {
-  const files = req.files; // Array of files
-  const fileNames = JSON.parse(req.body.fileNames); // Parse JSON array
+  const files = req.files;
+  const fileNames = JSON.parse(req.body.fileNames);
 
   if (!files || !fileNames || files.length !== fileNames.length) {
     return res
@@ -74,29 +76,31 @@ app.post("/api/upload", upload.array("files"), async (req, res) => {
   }
 
   try {
-    const fileURLs = [];
+    const fileURLs = await Promise.all(
+      files.map(async (file, index) => {
+        const fileName = fileNames[index];
+        const contentType = file.mimetype;
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const fileName = fileNames[i];
-      const contentType = file.mimetype;
+        const fileRef = bucket.file(`files/${fileName}`);
+        await fileRef.save(file.buffer, { contentType });
 
-      const fileRef = bucket.file(`files/${fileName}`);
-      await fileRef.save(file.buffer, { contentType });
+        const [fileURL] = await fileRef.getSignedUrl({
+          action: "read",
+          expires: "03-09-2491",
+        });
 
-      const [fileURL] = await fileRef.getSignedUrl({
-        action: "read",
-        expires: "03-09-2491", // Long expiration date
-      });
+        // Store the file URL in the cache
+        cache.set(fileName, fileURL);
 
-      fileURLs.push(fileURL);
+        await db.collection("files").add({
+          fileName,
+          uploadDate: new Date(),
+          fileURL,
+        });
 
-      await db.collection("files").add({
-        fileName,
-        uploadDate: new Date(),
-        fileURL,
-      });
-    }
+        return fileURL;
+      })
+    );
 
     res.status(200).send({ message: "Files uploaded successfully", fileURLs });
   } catch (error) {
@@ -105,18 +109,22 @@ app.post("/api/upload", upload.array("files"), async (req, res) => {
   }
 });
 
-// Get Files
+// Get Files Route
 app.get("/api/files", async (req, res) => {
   try {
+    if (cache.has("files")) {
+      return res.status(200).json(JSON.parse(cache.get("files")));
+    }
+
     const snapshot = await db.collection("files").get();
-    const files = snapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        uploadDate: data.uploadDate.toDate().toLocaleString(), // Convert Firestore Timestamp to readable date
-      };
-    });
+    const files = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+      uploadDate: doc.data().uploadDate.toDate().toLocaleString(),
+    }));
+
+    // Cache the files list
+    cache.set("files", JSON.stringify(files));
 
     res.status(200).json(files);
   } catch (error) {
@@ -125,7 +133,7 @@ app.get("/api/files", async (req, res) => {
   }
 });
 
-// Download File
+// Download File Route
 app.get("/api/download/:fileName", async (req, res) => {
   const fileName = req.params.fileName;
 
@@ -139,21 +147,18 @@ app.get("/api/download/:fileName", async (req, res) => {
 
     const [fileURL] = await fileRef.getSignedUrl({
       action: "read",
-      expires: "03-09-2491", // Long expiration date
+      expires: "03-09-2491",
     });
 
-    // Fetch the file from the signed URL
+    // Store the file URL in the cache
+    cache.set(fileName, fileURL);
+
     const response = await fetch(fileURL);
 
-    if (!response.ok) {
-      throw new Error("Network response was not ok.");
-    }
+    if (!response.ok) throw new Error("Network response was not ok.");
 
-    // Set the appropriate headers
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
     res.setHeader("Content-Type", response.headers.get("Content-Type"));
-
-    // Pipe the file to the response
     response.body.pipe(res);
   } catch (error) {
     console.error("Error downloading file:", error);
@@ -161,7 +166,7 @@ app.get("/api/download/:fileName", async (req, res) => {
   }
 });
 
-// Delete File
+// Delete File Route
 app.delete("/api/files/:id", async (req, res) => {
   const fileId = req.params.id;
 
@@ -177,6 +182,9 @@ app.delete("/api/files/:id", async (req, res) => {
     await fileRef.delete();
     await fileDoc.delete();
 
+    // Clear the cache for the files list
+    cache.del("files");
+
     res.status(200).send({ message: "File deleted successfully" });
   } catch (error) {
     console.error("Error deleting file:", error);
@@ -186,71 +194,80 @@ app.delete("/api/files/:id", async (req, res) => {
 
 // Statistics Endpoint
 app.get("/api/statistics", async (req, res) => {
-  //console.log("API Called");
   try {
-    // Total Download Number
+    if (cache.has("statistics")) {
+      return res.json(JSON.parse(cache.get("statistics")));
+    }
+
     const downloadsSnapshot = await db.collection("downloads").get();
     const totalDownloads = downloadsSnapshot.size;
 
-    // Total Used GB
     let totalUsedBytes = 0;
     const [files] = await bucket.getFiles();
 
-    // Check if there are files
     if (files.length > 0) {
-      for (const file of files) {
-        try {
-          const [metadata] = await file.getMetadata();
-          if (metadata && metadata.size) {
-            totalUsedBytes += parseInt(metadata.size, 10);
-          } else {
-            console.warn(`No size metadata for file: ${file.name}`);
+      await Promise.all(
+        files.map(async (file) => {
+          try {
+            const [metadata] = await file.getMetadata();
+            if (metadata && metadata.size) {
+              totalUsedBytes += parseInt(metadata.size, 10);
+            } else {
+              console.warn(`No size metadata for file: ${file.name}`);
+            }
+          } catch (error) {
+            console.error(
+              `Error retrieving metadata for file ${file.name}:`,
+              error
+            );
           }
-        } catch (error) {
-          console.error(
-            `Error retrieving metadata for file ${file.name}:`,
-            error
-          );
-        }
-      }
+        })
+      );
     } else {
       console.warn("No files found in storage.");
     }
 
-    const totalUsedGB = (totalUsedBytes / (1024 * 1024 * 1024)).toFixed(2); // Convert bytes to GB
-
-    // Total Files
+    const totalUsedGB = (totalUsedBytes / (1024 * 1024 * 1024)).toFixed(2);
     const totalFiles = files.length;
 
-    // Send the statistics as a response
-    res.json({
-      totalDownloads,
-      storageUsed: totalUsedGB,
-      totalFiles,
-    });
+    const statistics = { totalDownloads, storageUsed: totalUsedGB, totalFiles };
+
+    // Cache the statistics
+    cache.set("statistics", JSON.stringify(statistics));
+
+    res.json(statistics);
   } catch (error) {
     console.error("Error fetching statistics:", error);
     res.status(500).json({ error: "Failed to fetch statistics" });
   }
 });
 
+// File Formats Endpoint
 app.get("/api/file-formats", async (req, res) => {
   try {
+    if (cache.has("file-formats")) {
+      return res.json(JSON.parse(cache.get("file-formats")));
+    }
+
     const [files] = await bucket.getFiles();
     const formats = new Map();
 
-    for (const file of files) {
-      const [metadata] = await file.getMetadata();
-      const contentType = metadata.contentType;
-      if (contentType) {
-        // Use the mimeTypeMapping to get the simplified format
+    await Promise.all(
+      files.map(async (file) => {
+        const [metadata] = await file.getMetadata();
+        const contentType = metadata.contentType;
         const format =
           mimeTypeMapping[contentType] || contentType.split("/")[1];
-        formats.set(format, (formats.get(format) || 0) + 1); // Count occurrences of each format
-      }
-    }
+        formats.set(format, (formats.get(format) || 0) + 1);
+      })
+    );
 
-    res.json({ formats: Array.from(formats.entries()) });
+    const result = { formats: Array.from(formats.entries()) };
+
+    // Cache the file formats
+    cache.set("file-formats", JSON.stringify(result));
+
+    res.json(result);
   } catch (error) {
     console.error("Error fetching file formats:", error);
     res.status(500).json({ error: "Failed to fetch file formats" });
@@ -312,39 +329,56 @@ app.get("/", async (req, res) => {
 // Note Schema
 const noteSchema = new mongoose.Schema({
   title: { type: String, required: true },
-  text: { type: String, required: true }
+  text: { type: String, required: true },
 });
 
-const Note = mongoose.model('Note', noteSchema);
+const Note = mongoose.model("Note", noteSchema);
 
 // API Endpoints
-app.get('/api/notes', async (req, res) => {
+app.get("/api/notes", async (req, res) => {
   try {
-    const notes = await Note.find();
-    res.json(notes);
+    // Check if notes are cached
+    if (cache.has("notes")) {
+      // Fetch notes from cache
+      const cachedNotes = cache.get("notes");
+      return res.json(JSON.parse(cachedNotes));
+    } else {
+      // Fetch notes from the database
+      const notes = await Note.find();
+      // Cache the notes
+      cache.set("notes", JSON.stringify(notes));
+      return res.json(notes);
+    }
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-app.post('/api/notes', async (req, res) => {
+app.post("/api/notes", async (req, res) => {
   try {
     const { title, text } = req.body;
     if (!title || !text) {
-      return res.status(400).json({ message: 'Title and text are required' });
+      return res.status(400).json({ message: "Title and text are required" });
     }
+
     const newNote = new Note({
       title,
-      text
+      text,
     });
     await newNote.save();
+
+    // Update the cache
+    const cachedNotes = JSON.parse(cache.get("notes") || "[]");
+    cachedNotes.push(newNote);
+    cache.set("notes", JSON.stringify(cachedNotes));
+
     res.json(newNote);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-app.put('/api/notes/:id', async (req, res) => {
+app.put("/api/notes/:id", async (req, res) => {
   try {
     const { title, text } = req.body;
     const updatedNote = await Note.findByIdAndUpdate(
@@ -353,26 +387,44 @@ app.put('/api/notes/:id', async (req, res) => {
       { new: true }
     );
     if (!updatedNote) {
-      return res.status(404).json({ message: 'Note not found' });
+      return res.status(404).json({ message: "Note not found" });
     }
+
+    // Update the cache
+    const cachedNotes = JSON.parse(cache.get("notes") || "[]");
+    const noteIndex = cachedNotes.findIndex(
+      (note) => note._id.toString() === req.params.id
+    );
+    if (noteIndex !== -1) {
+      cachedNotes[noteIndex] = updatedNote; // Update the specific note
+      cache.set("notes", JSON.stringify(cachedNotes));
+    }
+
     res.json(updatedNote);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-app.delete('/api/notes/:id', async (req, res) => {
+app.delete("/api/notes/:id", async (req, res) => {
   try {
     const deletedNote = await Note.findByIdAndDelete(req.params.id);
     if (!deletedNote) {
-      return res.status(404).json({ message: 'Note not found' });
+      return res.status(404).json({ message: "Note not found" });
     }
+
+    // Update the cache
+    const cachedNotes = JSON.parse(cache.get("notes") || "[]");
+    const updatedCachedNotes = cachedNotes.filter(
+      (note) => note._id.toString() !== req.params.id
+    );
+    cache.set("notes", JSON.stringify(updatedCachedNotes));
+
     res.json(deletedNote);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
-
 // Start Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
