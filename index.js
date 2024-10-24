@@ -25,27 +25,33 @@ mongoose.connection.on("connected", () => {
   console.log("Connected to MongoDB");
 });
 
-const allowedOrigins = [
-  "http://localhost:5173",
-  "https://filepanel.vercel.app",
-  "https://server.anasib.tech",
-  "https://www.anasib.tech",
-  "https://anasib.tech",
-  "https://www.server.anasib.tech",
-];
+// const allowedOrigins = [
+//   "http://localhost:5173",
+//   "https://filepanel.vercel.app",
+//   "https://server.anasib.tech",
+//   "https://www.anasib.tech",
+//   "https://anasib.tech",
+//   "https://www.server.anasib.tech",
+// ];
 
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  methods: ["GET", "POST", "PUT", "DELETE"],
-};
+// const corsOptions = {
+//   origin: function (origin, callback) {
+//     if (!origin || allowedOrigins.includes(origin)) {
+//       callback(null, true);
+//     } else {
+//       callback(new Error("Not allowed by CORS"));
+//     }
+//   },
+//   methods: ["GET", "POST", "PUT", "DELETE"],
+// };
 
-app.use(cors(corsOptions));
+app.use(cors());
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', 'https://server.anasib.tech');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE'); // Specify allowed methods
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization'); // Specify allowed headers
+  next();
+});
 app.use(express.json());
 app.use(bodyParser.json({ limit: "200mb" }));
 app.use(bodyParser.urlencoded({ limit: "200mb", extended: true }));
