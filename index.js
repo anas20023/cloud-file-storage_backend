@@ -29,6 +29,7 @@ const allowedOrigins = [
   "http://localhost:5173",
   "https://filepanel.vercel.app",
   "https://server.anasib.tech",
+  "server.anasib.tech",
   "https://www.anasib.tech",
   "https://anasib.tech",
   "https://www.server.anasib.tech",
