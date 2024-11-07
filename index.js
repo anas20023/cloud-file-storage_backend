@@ -7,7 +7,6 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import fetch from "node-fetch"; // Import node-fetch if using it
 import { mimeTypeMapping } from "./mimeTypes.js"; // Adjust path as needed
-import NodeCache from "node-cache";
 const app = express();
 dotenv.config(); // Load environment variables
 const dburl = process.env.MONGO_URI;
@@ -15,7 +14,7 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
 });
-//console.log(dburl);
+
 mongoose.connect(dburl, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -35,14 +34,14 @@ const allowedOrigins = [
 ];
 
 const corsOptions = {
-  origin: true, 
+  origin: true,
   methods: ["GET", "POST", "PUT", "DELETE"],
 };
 
 app.use(cors(corsOptions));
 
 app.use((req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", "*"); 
+  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   next();
@@ -50,7 +49,6 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(bodyParser.json({ limit: "200mb" }));
 app.use(bodyParser.urlencoded({ limit: "200mb", extended: true }));
-const cache = new NodeCache();
 
 // Initialize Firebase Admin SDK
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -90,9 +88,6 @@ app.post("/api/upload", upload.array("files"), async (req, res) => {
           expires: "03-09-2491",
         });
 
-        // Store the file URL in the cache
-        cache.set(fileName, fileURL);
-
         await db.collection("files").add({
           fileName,
           uploadDate: new Date(),
@@ -113,19 +108,12 @@ app.post("/api/upload", upload.array("files"), async (req, res) => {
 // Get Files Route
 app.get("/api/files", async (req, res) => {
   try {
-    if (cache.has("files")) {
-      return res.status(200).json(JSON.parse(cache.get("files")));
-    }
-
     const snapshot = await db.collection("files").get();
     const files = snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
       uploadDate: doc.data().uploadDate.toDate().toLocaleString(),
     }));
-
-    // Cache the files list
-    cache.set("files", JSON.stringify(files));
 
     res.status(200).json(files);
   } catch (error) {
@@ -151,9 +139,6 @@ app.get("/api/download/:fileName", async (req, res) => {
       expires: "03-09-2491",
     });
 
-    // Store the file URL in the cache
-    cache.set(fileName, fileURL);
-
     const response = await fetch(fileURL);
 
     if (!response.ok) throw new Error("Network response was not ok.");
@@ -167,7 +152,6 @@ app.get("/api/download/:fileName", async (req, res) => {
   }
 });
 
-// Delete File Route
 // Delete File Route
 app.delete("/api/files/:id", async (req, res) => {
   const fileId = req.params.id;
@@ -184,10 +168,6 @@ app.delete("/api/files/:id", async (req, res) => {
     await fileRef.delete();
     await fileDoc.delete();
 
-    // Clear the cache for the files list and the specific file
-    cache.del("files"); // Clear the files list
-    cache.del(fileData.fileName); // Optionally clear individual file cache
-
     res.status(200).send({ message: "File deleted successfully" });
   } catch (error) {
     console.error("Error deleting file:", error);
@@ -198,10 +178,6 @@ app.delete("/api/files/:id", async (req, res) => {
 // Statistics Endpoint
 app.get("/api/statistics", async (req, res) => {
   try {
-    if (cache.has("statistics")) {
-      return res.json(JSON.parse(cache.get("statistics")));
-    }
-
     const downloadsSnapshot = await db.collection("downloads").get();
     const totalDownloads = downloadsSnapshot.size;
 
@@ -235,9 +211,6 @@ app.get("/api/statistics", async (req, res) => {
 
     const statistics = { totalDownloads, storageUsed: totalUsedGB, totalFiles };
 
-    // Cache the statistics
-    cache.set("statistics", JSON.stringify(statistics));
-
     res.json(statistics);
   } catch (error) {
     console.error("Error fetching statistics:", error);
@@ -248,10 +221,6 @@ app.get("/api/statistics", async (req, res) => {
 // File Formats Endpoint
 app.get("/api/file-formats", async (req, res) => {
   try {
-    if (cache.has("file-formats")) {
-      return res.json(JSON.parse(cache.get("file-formats")));
-    }
-
     const [files] = await bucket.getFiles();
     const formats = new Map();
 
@@ -267,15 +236,14 @@ app.get("/api/file-formats", async (req, res) => {
 
     const result = { formats: Array.from(formats.entries()) };
 
-    // Cache the file formats
-    cache.set("file-formats", JSON.stringify(result));
-
     res.json(result);
   } catch (error) {
     console.error("Error fetching file formats:", error);
     res.status(500).json({ error: "Failed to fetch file formats" });
   }
 });
+
+// Weather Endpoint
 app.get("/api/weather", async (req, res) => {
   const { latitude, longitude } = req.query;
   console.log(latitude, longitude);
@@ -290,7 +258,8 @@ app.get("/api/weather", async (req, res) => {
     res.status(500).json({ error: "Error fetching weather data" });
   }
 });
-// Get Users
+
+// Authentication Endpoint
 app.post("/api/authenticate", async (req, res) => {
   console.log("Working");
   const { username, password } = req.body;
@@ -325,111 +294,89 @@ app.post("/api/authenticate", async (req, res) => {
     return res.status(500).send({ message: "Failed to authenticate user" });
   }
 });
-app.get("/", async (req, res) => {
-  res.send("Hello World");
-});
 
-// Note Schema
-const noteSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  text: { type: String, required: true },
-});
+// Notes Schema and Model
+const noteSchema = new mongoose.Schema(
+  {
+    content: String,
+    title: String,
+    date: Date,
+    lastModified: Date,
+  },
+  { timestamps: true }
+);
 
 const Note = mongoose.model("Note", noteSchema);
 
-// API Endpoints
 app.get("/api/notes", async (req, res) => {
   try {
-    // Check if notes are cached
-    if (cache.has("notes")) {
-      // Fetch notes from cache
-      const cachedNotes = cache.get("notes");
-      return res.json(JSON.parse(cachedNotes));
-    } else {
-      // Fetch notes from the database
-      const notes = await Note.find();
-      // Cache the notes
-      cache.set("notes", JSON.stringify(notes));
-      return res.json(notes);
-    }
+    const notes = await Note.find();
+    res.json(notes);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ error: "Failed to fetch notes" });
   }
 });
 
 app.post("/api/notes", async (req, res) => {
-  try {
-    const { title, text } = req.body;
-    if (!title || !text) {
-      return res.status(400).json({ message: "Title and text are required" });
-    }
+  const { title, content, date } = req.body;
 
+  try {
     const newNote = new Note({
       title,
-      text,
+      content,
+      date,
+      lastModified: new Date(),
     });
     await newNote.save();
-
-    // Update the cache
-    const cachedNotes = JSON.parse(cache.get("notes") || "[]");
-    cachedNotes.push(newNote);
-    cache.set("notes", JSON.stringify(cachedNotes));
-
-    res.json(newNote);
+    res.status(201).json(newNote);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ error: "Failed to save note" });
   }
 });
 
 app.put("/api/notes/:id", async (req, res) => {
+  const noteId = req.params.id;
+  const { title, content, date } = req.body;
+
   try {
-    const { title, text } = req.body;
-    const updatedNote = await Note.findByIdAndUpdate(
-      req.params.id,
-      { title, text },
+    const note = await Note.findByIdAndUpdate(
+      noteId,
+      { title, content, date, lastModified: new Date() },
       { new: true }
     );
-    if (!updatedNote) {
-      return res.status(404).json({ message: "Note not found" });
+
+    if (!note) {
+      return res.status(404).json({ error: "Note not found" });
     }
 
-    // Update the cache
-    const cachedNotes = JSON.parse(cache.get("notes") || "[]");
-    const noteIndex = cachedNotes.findIndex(
-      (note) => note._id.toString() === req.params.id
-    );
-    if (noteIndex !== -1) {
-      cachedNotes[noteIndex] = updatedNote; // Update the specific note
-      cache.set("notes", JSON.stringify(cachedNotes));
-    }
-
-    res.json(updatedNote);
+    res.json(note);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ error: "Failed to update note" });
   }
 });
 
 app.delete("/api/notes/:id", async (req, res) => {
+  const noteId = req.params.id;
+
   try {
-    const deletedNote = await Note.findByIdAndDelete(req.params.id);
-    if (!deletedNote) {
-      return res.status(404).json({ message: "Note not found" });
+    const note = await Note.findByIdAndDelete(noteId);
+
+    if (!note) {
+      return res.status(404).json({ error: "Note not found" });
     }
 
-    // Update the cache
-    const cachedNotes = JSON.parse(cache.get("notes") || "[]");
-    const updatedCachedNotes = cachedNotes.filter(
-      (note) => note._id.toString() !== req.params.id
-    );
-    cache.set("notes", JSON.stringify(updatedCachedNotes));
-
-    res.json(deletedNote);
+    res.json({ message: "Note deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ error: "Failed to delete note" });
   }
 });
-// Start Server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+
+// Default Route
+app.get("/", (req, res) => {
+  res.send("Hello from the Express server!");
+});
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
