@@ -35,21 +35,16 @@ const allowedOrigins = [
 ];
 
 const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
+  origin: true, 
   methods: ["GET", "POST", "PUT", "DELETE"],
 };
 
 app.use(cors(corsOptions));
+
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', 'https://server.anasib.tech','http://localhost:5173');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE'); // Specify allowed methods
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization'); // Specify allowed headers
+  res.setHeader("Access-Control-Allow-Origin", "*"); 
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   next();
 });
 app.use(express.json());
@@ -173,6 +168,7 @@ app.get("/api/download/:fileName", async (req, res) => {
 });
 
 // Delete File Route
+// Delete File Route
 app.delete("/api/files/:id", async (req, res) => {
   const fileId = req.params.id;
 
@@ -188,8 +184,9 @@ app.delete("/api/files/:id", async (req, res) => {
     await fileRef.delete();
     await fileDoc.delete();
 
-    // Clear the cache for the files list
-    cache.del("files");
+    // Clear the cache for the files list and the specific file
+    cache.del("files"); // Clear the files list
+    cache.del(fileData.fileName); // Optionally clear individual file cache
 
     res.status(200).send({ message: "File deleted successfully" });
   } catch (error) {
