@@ -15,14 +15,14 @@ const upload = multer({
   limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
 });
 
-mongoose.connect(dburl, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
+// mongoose.connect(dburl, {
+//   useNewUrlParser: true,
+//   useUnifiedTopology: true,
+// });
 
-mongoose.connection.on("connected", () => {
-  console.log("Connected to MongoDB");
-});
+// mongoose.connection.on("connected", () => {
+//   console.log("Connected to MongoDB");
+// });
 
 const allowedOrigins = [
   "http://localhost:5173",
@@ -64,63 +64,113 @@ const bucket = admin.storage().bucket();
 // API Endpoints
 
 // Upload File
-app.post("/api/upload", upload.array("files"), async (req, res) => {
-  const files = req.files;
-  const fileNames = JSON.parse(req.body.fileNames);
-
-  if (!files || !fileNames || files.length !== fileNames.length) {
-    return res
-      .status(400)
-      .send({ message: "Missing required fields or mismatch in file count" });
-  }
-
+app.post('/api/upload', upload.array('files'), async (req, res) => {
   try {
+    const files = req.files;
+    const { fileNames, user_name } = req.body;
+
+    if (!user_name) {
+      return res.status(400).json({
+        message: 'Missing user_name',
+      });
+    }
+
+    if (!files || !fileNames) {
+      return res.status(400).json({
+        message: 'Missing required fields',
+      });
+    }
+
+    const parsedFileNames = JSON.parse(fileNames);
+
+    if (files.length !== parsedFileNames.length) {
+      return res.status(400).json({
+        message: 'File count and fileNames count mismatch',
+      });
+    }
+
     const fileURLs = await Promise.all(
       files.map(async (file, index) => {
-        const fileName = fileNames[index];
+        const originalFileName = parsedFileNames[index];
         const contentType = file.mimetype;
 
-        const fileRef = bucket.file(`files/${fileName}`);
-        await fileRef.save(file.buffer, { contentType });
+        const storagePath = `files/${user_name}/${Date.now()}_${originalFileName}`;
+        const fileRef = bucket.file(storagePath);
 
-        const [fileURL] = await fileRef.getSignedUrl({
-          action: "read",
-          expires: "03-09-2491",
+        await fileRef.save(file.buffer, {
+          contentType,
+          resumable: false,
         });
 
-        await db.collection("files").add({
-          fileName,
-          uploadDate: new Date(),
+        const [fileURL] = await fileRef.getSignedUrl({
+          action: 'read',
+          expires: '03-09-2491',
+        });
+
+        await db.collection('files').add({
+          fileName: originalFileName,
+          storagePath,
           fileURL,
+          userName: user_name,
+          uploadDate: new Date(),
+          contentType,
         });
 
         return fileURL;
       })
     );
 
-    res.status(200).send({ message: "Files uploaded successfully", fileURLs });
+    return res.status(200).json({
+      message: 'Files uploaded successfully',
+      fileURLs,
+    });
   } catch (error) {
-    console.error("Error uploading files:", error);
-    res.status(500).send({ message: "Failed to upload files" });
+    console.error('Upload error:', error);
+    return res.status(500).json({
+      message: 'Failed to upload files',
+    });
   }
 });
+
 
 // Get Files Route
-app.get("/api/files", async (req, res) => {
+app.get('/api/files', async (req, res) => {
   try {
-    const snapshot = await db.collection("files").get();
-    const files = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-      uploadDate: doc.data().uploadDate.toDate().toLocaleString(),
-    }));
+    const { user_name } = req.query;
 
-    res.status(200).json(files);
+    if (!user_name) {
+      return res.status(400).json({
+        message: 'Missing user_name',
+      });
+    }
+
+    const snapshot = await db
+      .collection('files')
+      .where('userName', '==', user_name)
+      .orderBy('uploadDate', 'desc')
+      .get();
+
+    const files = snapshot.docs.map((doc) => {
+      const data = doc.data();
+
+      return {
+        id: doc.id,
+        ...data,
+        uploadDate: data.uploadDate
+          ? data.uploadDate.toDate().toLocaleString()
+          : null,
+      };
+    });
+
+    return res.status(200).json(files);
   } catch (error) {
-    console.error("Error fetching files:", error);
-    res.status(500).send({ message: "Failed to fetch files" });
+    console.error('Error fetching files:', error);
+    return res.status(500).json({
+      message: 'Failed to fetch files',
+    });
   }
 });
+
 
 // Download File Route
 app.get("/api/download/:fileName", async (req, res) => {
@@ -176,70 +226,95 @@ app.delete("/api/files/:id", async (req, res) => {
 });
 
 // Statistics Endpoint
-app.get("/api/statistics", async (req, res) => {
+app.get('/api/statistics', async (req, res) => {
   try {
-    const downloadsSnapshot = await db.collection("downloads").get();
-    const totalDownloads = downloadsSnapshot.size;
+    const { user_name } = req.query;
 
-    let totalUsedBytes = 0;
-    const [files] = await bucket.getFiles();
-
-    if (files.length > 0) {
-      await Promise.all(
-        files.map(async (file) => {
-          try {
-            const [metadata] = await file.getMetadata();
-            if (metadata && metadata.size) {
-              totalUsedBytes += parseInt(metadata.size, 10);
-            } else {
-              console.warn(`No size metadata for file: ${file.name}`);
-            }
-          } catch (error) {
-            console.error(
-              `Error retrieving metadata for file ${file.name}:`,
-              error
-            );
-          }
-        })
-      );
-    } else {
-      console.warn("No files found in storage.");
+    if (!user_name) {
+      return res.status(400).json({ message: 'Missing user_name' });
     }
 
-    const totalUsedGB = (totalUsedBytes / (1024 * 1024 * 1024)).toFixed(2);
-    const totalFiles = files.length;
+    // 1️⃣ Total downloads (UNCHANGED)
+    const downloadsSnapshot = await db
+      .collection('downloads')
+      .where('userName', '==', user_name)
+      .get();
 
-    const statistics = { totalDownloads, storageUsed: totalUsedGB, totalFiles };
+    const totalDownloads = downloadsSnapshot.size;
 
-    res.json(statistics);
+    // 2️⃣ User files (count + size)
+    const filesSnapshot = await db
+      .collection('files')
+      .where('userName', '==', user_name)
+      .get();
+
+    const totalFiles = filesSnapshot.size;
+
+    let totalUsedBytes = 0;
+
+    await Promise.all(
+      filesSnapshot.docs.map(async (doc) => {
+        const { storagePath } = doc.data();
+        if (!storagePath) return;
+
+        try {
+          const [metadata] = await bucket.file(storagePath).getMetadata();
+          if (metadata?.size) {
+            totalUsedBytes += Number(metadata.size);
+          }
+        } catch (err) {
+          console.error(`Metadata error for ${storagePath}`, err);
+        }
+      })
+    );
+    // console.log(totalUsedBytes)
+    // const storageUsed = (totalUsedBytes / (1024 ** 2)).toFixed(2); // GB
+
+    res.json({
+      totalFiles,
+      totalUsedBytes,
+      totalDownloads,
+    });
   } catch (error) {
-    console.error("Error fetching statistics:", error);
-    res.status(500).json({ error: "Failed to fetch statistics" });
+    console.error('Error fetching statistics:', error);
+    res.status(500).json({ error: 'Failed to fetch statistics' });
   }
 });
 
+
+
 // File Formats Endpoint
-app.get("/api/file-formats", async (req, res) => {
+app.get('/api/file-formats', async (req, res) => {
   try {
-    const [files] = await bucket.getFiles();
+    const { user_name } = req.query;
+
+    if (!user_name) {
+      return res.status(400).json({ message: 'Missing user_name' });
+    }
+
+    const snapshot = await db
+      .collection('files')
+      .where('userName', '==', user_name)
+      .get();
+
     const formats = new Map();
 
-    await Promise.all(
-      files.map(async (file) => {
-        const [metadata] = await file.getMetadata();
-        const contentType = metadata.contentType;
-        const format =
-          mimeTypeMapping[contentType] || contentType.split("/")[1];
-        formats.set(format, (formats.get(format) || 0) + 1);
-      })
-    );
+    snapshot.docs.forEach((doc) => {
+      const { contentType } = doc.data();
+      if (!contentType) return;
 
-    const result = { formats: Array.from(formats.entries()) };
+      const format =
+        mimeTypeMapping[contentType] || contentType.split('/')[1] || 'unknown';
 
-    res.json(result);
+      formats.set(format, (formats.get(format) || 0) + 1);
+    });
+
+    res.json({
+      formats: Array.from(formats.entries()),
+    });
   } catch (error) {
-    console.error("Error fetching file formats:", error);
-    res.status(500).json({ error: "Failed to fetch file formats" });
+    console.error('Error fetching file formats:', error);
+    res.status(500).json({ error: 'Failed to fetch file formats' });
   }
 });
 
