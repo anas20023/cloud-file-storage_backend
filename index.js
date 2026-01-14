@@ -203,27 +203,44 @@ app.get("/api/download/:fileName", async (req, res) => {
 });
 
 // Delete File Route
-app.delete("/api/files/:id", async (req, res) => {
-  const fileId = req.params.id;
-
+app.delete('/api/files/:id', async (req, res) => {
   try {
-    const fileDoc = db.collection("files").doc(fileId);
-    const fileData = (await fileDoc.get()).data();
+    const { id } = req.params;
+    const { user_name } = req.query;
 
-    if (!fileData) {
-      return res.status(404).send({ message: "File not found" });
+    if (!user_name) {
+      return res.status(400).json({ message: 'Missing user_name' });
     }
 
-    const fileRef = bucket.file(`files/${fileData.fileName}`);
-    await fileRef.delete();
-    await fileDoc.delete();
+    const fileDocRef = db.collection('files').doc(id);
+    const fileSnap = await fileDocRef.get();
 
-    res.status(200).send({ message: "File deleted successfully" });
+    if (!fileSnap.exists) {
+      return res.status(404).json({ message: 'File not found' });
+    }
+
+    const fileData = fileSnap.data();
+
+    // 🔒 Ownership check
+    if (fileData.userName !== user_name) {
+      return res.status(403).json({ message: 'Unauthorized delete attempt' });
+    }
+
+    // ✅ Delete from storage using exact path
+    if (fileData.storagePath) {
+      await bucket.file(fileData.storagePath).delete();
+    }
+
+    // ✅ Delete Firestore record
+    await fileDocRef.delete();
+
+    res.status(200).json({ message: 'File deleted successfully' });
   } catch (error) {
-    console.error("Error deleting file:", error);
-    res.status(500).send({ message: "Failed to delete file" });
+    console.error('Error deleting file:', error);
+    res.status(500).json({ message: 'Failed to delete file' });
   }
 });
+
 
 // Statistics Endpoint
 app.get('/api/statistics', async (req, res) => {
@@ -280,7 +297,6 @@ app.get('/api/statistics', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch statistics' });
   }
 });
-
 
 
 // File Formats Endpoint
